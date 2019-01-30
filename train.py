@@ -63,7 +63,10 @@ if args.n_hidden:
 else:
     hidden_units = [1024,512]
 save_dir = args.save_dir
-device = args.device
+if args.device == True:
+    device = 'cuda' 
+else:
+    device = 'cpu'
 lr = args.learn_rate
 
 print('model name: ', arch)
@@ -77,10 +80,30 @@ print('gpu: ', device)
 batch_size = 64
 n_output = 102 # number of flower categories
 
-class neuralNet(object):
-    
+def plotTraining(train_losses, valid_losses, acc):
+    fig, axes = plt.subplots(figsize=(12,4), ncols=2)
+    axes[0].plot(train_losses, label='train')
+    axes[0].plot(valid_losses, label='valid')
+    axes[0].legend(loc='upper left')
+    axes[0].set_xlabel('Epoch')
+    axes[0].set_ylabel('Loss')
+    axes[1].plot(acc)
+    axes[1].set_xlabel('Epoch')
+    axes[1].set_ylabel('Accuracy')
+
+    return fig
+
+class convNeuralNet(object):
+
+    def __init__(self, device):
+        self.__device = device 
+        self.__optimizer = None
+        self.__loss_crit = None
+        self.__model = None
+
     def prepare_data(self,datadir, batch_size):
 
+        print('prepare_data')
         # define transforms
         transf_train = transforms.Compose(\
         [transforms.Resize(255),\
@@ -108,9 +131,10 @@ class neuralNet(object):
 
         return data_train, data_valid, data_test
 
-    def prepare_loader(data_train, data_valid, data_test, \
+    def prepare_loader(self, data_train, data_valid, data_test, \
     batch_size):
 
+        print('prepare_loader')
         # define dataloaders
         loader_train = torch.utils.data.DataLoader(data_train,\
         batch_size=batch_size, shuffle=True)
@@ -121,19 +145,148 @@ class neuralNet(object):
     
         return loader_train, loader_valid, loader_test
 
-    def load_model(arch):
-        if arch == 'resnet50':
-            model = models.resnet50(pretrained=True)
-            n_inputs = 2048
-        else:
-            model = models.vgg16(pretrained=True)
+    def load_model(self, arch):
+        if arch == 'vgg16':
+            print('vgg16 loaded')
+            self.__model = models.vgg16(pretrained=True)
             n_inputs = 25088
+        else: # defaults to resnet50
+            print('resnet50 loaded')
+            self.__model = models.resnet50(pretrained=True)
+            n_inputs = 2048
     
         # freeze feature parameters - do not backpropagate them
-        for param in model.parameters():
+        for param in self.__model.parameters():
             param.requires_grad = False
 
-        return model, n_inputs
+        return n_inputs
+
+    def update_clf(self, clf):
+        if arch == 'vgg16':
+            self.__model.classifier = clf
+        else: # defaults to resnet50
+            self.__model.fc = clf
+
+        return self.__model
+
+    def setup_training(self, lr=0.003):
+#        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # using negative Log-Likelihood as loss function
+        self.__loss_crit = nn.NLLLoss()
+
+        # using Adam optimizer
+        if arch == 'resnet50':
+            self.__optimizer = \
+                    optim.Adam(self.__model.fc.parameters(), lr)
+        else:
+            self.__optimizer = \
+                    optim.Adam(self.__model.classifier.parameters(), lr)
+
+        return self.__device
+
+    def train_model(self, epochs, trainloader, validloader):
+        train_losses = []
+        valid_losses = []
+        acc = []
+        valid_step = batch_size
+        step_valid = 0
+ 
+        self.__model.to(self.__device)
+        self.__model.train()
+
+
+        print(self.__model)
+
+        for e in range(epochs):
+            print('epoch: ',e)
+            start = time.time()
+            train_loss = 0
+            steps = 0
+            for inputs, labels in trainloader:
+                inputs, labels = \
+                            inputs.to(self.__device), \
+                            labels.to(self.__device)        
+                self.__optimizer.zero_grad()
+                logit = self.__model.forward(inputs)
+                loss = self.__loss_crit(logit, labels)
+                loss.backward()
+                self.__optimizer.step()
+                train_loss += loss.item()
+                steps += 1
+            
+                if steps % valid_step == 0:
+        
+                    valid_loss = 0
+                    accuracy = 0
+                    with torch.no_grad():
+                        self.__model.eval()
+                        for inputs, labels in validloader:
+                            inputs, labels = \
+                                        inputs.to(self.__device), \
+                                        labels.to(self.__device)
+                            logit_v = self.__model.forward(inputs)
+                            loss_v = self.__loss_crit(logit_v, labels)
+                            valid_loss += loss_v.item()
+                            prob = torch.exp(logit_v)
+                            is_equal = (labels.data == prob.max(dim=1)[1])
+                            accuracy += torch.mean(is_equal.type(torch.FloatTensor))
+            
+                    step_valid += 1    
+                    model.train()
+
+                    print("Epoch: {} of {}".format(e+1, epochs))
+                    print("Training loss = {:.3f}".format(train_loss/len(trainloader)))
+                    print("Validation loss = {:.3f}".format(valid_loss/len(validloader)))
+                    print("Validation Accuracy = {:.3f}".format(accuracy/len(validloader)))
+                    print(f"Time = {time.time()/60.:.3f}")
+                    acc.append(accuracy / len(validloader))
+                    valid_losses.append(valid_loss / len(validloader))
+                    train_losses.append(train_loss / len(trainloader))
+        
+        return [train_losses, valid_losses, acc]
+
+        def test_model(self, test_loader):
+
+            ''''
+            This function loads the trained model and evaluates its accuracy
+            using the test set
+            
+            INPUTS:
+            test_loader - Data loader containing test data
+            
+            OUTPUTS:
+            test loss - mean loss calculated for testing set
+            accuracy - mean accuracy calculated using the testing label
+            '''
+            
+            test_loss = 0
+            accuracy = 0
+            with torch.no_grad():
+                self.__model.eval()
+                for inputs, labels in test_loader:
+                    inputs, labels = \
+                            inputs.to(self.__device), \
+                            labels.to(self.__device)
+                    log_prob = self.__model(inputs)
+                    loss = self.loss_crit(log_prob, labels)
+                    test_loss += loss.item()
+                    prob = torch.exp(log_prob)
+                    #top_p, top_class = prob.topk(1, dim=1)
+                    #equals = top_class == labels.view(*top_class.shape)
+                    #accuracy += torch.mean(equals.type(torch.FloatTensor))
+                    is_equal = (labels.data == prob.max(dim=1)[1])
+                    accuracy += torch.mean(is_equal.type(torch.FloatTensor))
+                    
+#                print("Test loss = {:.3f}".format(test_loss/len(test_loader)))
+#                print("Test accuracy = {:.3f}".format(accuracy/len(test_loader)))
+                
+                self.__model.train()
+                
+            return test_loss, accuracy
+
+
+
 
 class Clf(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -143,28 +296,55 @@ class Clf(nn.Module):
         self.fc3 = nn.Linear(hidden_size[1], output_size)
         
         self.dropout = nn.Dropout(p=0.2)
-        
+        # initialize weights using He initialization
+        torch.nn.init.kaiming_normal_(self.fc1.weight, \
+                mode='fan_in')
+        torch.nn.init.kaiming_normal_(self.fc2.weight, \
+                mode='fan_in')
+        torch.nn.init.kaiming_normal_(self.fc3.weight, \
+                mode='fan_in')
+
+ 
     def forward(self, x):
+
         x = x.view(x.shape[0], -1)
         x = self.dropout(F.relu(self.fc1(x)))
         x = self.dropout(F.relu(self.fc2(x)))
         x = F.log_softmax(self.fc3(x), dim=1)
-        
+
         return x
 
 if __name__=='__main__':
     
     # instantiate neural network class  
-    nn = neuralNet() 
+    cnn = convNeuralNet(device) 
 
     # load and prepare data
     data_train, data_valid, data_test = \
-    nn.prepare_data(data_dir, batch_size)
+    cnn.prepare_data(data_dir, batch_size)
 
     # prepare loaders 
     loader_train, loader_valid, loader_test = \
-    nn.prepare_loader(data_train, data_test, \
+    cnn.prepare_loader(data_train, data_test, \
     data_valid, batch_size)
-    model, n_inputs = nn.load_model(arch)
+    n_inputs = cnn.load_model(arch)
 
+    # instantiate classifier
+    clf = Clf(n_inputs, hidden_units, n_output)
+
+    # replace classifier of pretrained network
+    model = cnn.update_clf(clf)
+#    print(model)
+
+    # setup training functions - device, loss and optimizer
+    device = cnn.setup_training(lr)
+    print('device: ',device)
+
+    # train the network
+    train_losses, valid_losses, acc = cnn.train_model(epochs, loader_train, loader_valid)
+
+    #plotTraining(train_losses, valid_losses, acc)
+
+    # test the model
+    test_loss, accuracy = test_model(loader_test)
 
