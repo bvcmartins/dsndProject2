@@ -24,7 +24,7 @@ description = "This program trains a convolutional NN for image\
 
 # parser options
 parser.add_argument("--arch", action="store", \
-type=str, dest='model_name', default='resnet50',\
+type=str, dest='arch', default='resnet50',\
 choices=['resnet50','vgg16'],\
 help="Choose pretrained model")
 
@@ -55,6 +55,7 @@ help="Define learn rate for training algorithm")
 
 args = parser.parse_args()
 
+arch = args.arch
 epochs = args.epochs
 data_dir = args.data_dir
 if args.n_hidden:
@@ -65,7 +66,7 @@ save_dir = args.save_dir
 device = args.device
 lr = args.learn_rate
 
-print('model name: ', args.model_name)
+print('model name: ', arch)
 print('number of epochs: ', epochs)
 print('data path: ', data_dir)
 print('hidden layers: ', hidden_units)
@@ -105,6 +106,11 @@ class neuralNet(object):
         data_test = datasets.ImageFolder(root=datadir+'/test/',\
         transform = transf_test)
 
+        return data_train, data_valid, data_test
+
+    def prepare_loader(data_train, data_valid, data_test, \
+    batch_size):
+
         # define dataloaders
         loader_train = torch.utils.data.DataLoader(data_train,\
         batch_size=batch_size, shuffle=True)
@@ -115,11 +121,50 @@ class neuralNet(object):
     
         return loader_train, loader_valid, loader_test
 
+    def load_model(arch):
+        if arch == 'resnet50':
+            model = models.resnet50(pretrained=True)
+            n_inputs = 2048
+        else:
+            model = models.vgg16(pretrained=True)
+            n_inputs = 25088
+    
+        # freeze feature parameters - do not backpropagate them
+        for param in model.parameters():
+            param.requires_grad = False
 
+        return model, n_inputs
+
+class Clf(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
+        self.fc1 = nn.Linear(input_size, hidden_size[0])
+        self.fc2 = nn.Linear(hidden_size[0], hidden_size[1])
+        self.fc3 = nn.Linear(hidden_size[1], output_size)
+        
+        self.dropout = nn.Dropout(p=0.2)
+        
+    def forward(self, x):
+        x = x.view(x.shape[0], -1)
+        x = self.dropout(F.relu(self.fc1(x)))
+        x = self.dropout(F.relu(self.fc2(x)))
+        x = F.log_softmax(self.fc3(x), dim=1)
+        
+        return x
 
 if __name__=='__main__':
     
-    # load data 
+    # instantiate neural network class  
     nn = neuralNet() 
-    loader_train, loader_valid, loader_test = \
+
+    # load and prepare data
+    data_train, data_valid, data_test = \
     nn.prepare_data(data_dir, batch_size)
+
+    # prepare loaders 
+    loader_train, loader_valid, loader_test = \
+    nn.prepare_loader(data_train, data_test, \
+    data_valid, batch_size)
+    model, n_inputs = nn.load_model(arch)
+
+
