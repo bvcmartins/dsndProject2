@@ -80,6 +80,9 @@ print('gpu: ', device)
 batch_size = 64
 n_output = 102 # number of flower categories
 
+# output file
+fh = open("output.dat","w")
+
 def plotTraining(train_losses, valid_losses, acc):
     fig, axes = plt.subplots(figsize=(12,4), ncols=2)
     axes[0].plot(train_losses, label='train')
@@ -246,9 +249,9 @@ class convNeuralNet(object):
         
         return [train_losses, valid_losses, acc]
 
-        def test_model(self, test_loader):
+    def test_model(self, test_loader):
 
-            ''''
+        ''''
             This function loads the trained model and evaluates its accuracy
             using the test set
             
@@ -258,34 +261,47 @@ class convNeuralNet(object):
             OUTPUTS:
             test loss - mean loss calculated for testing set
             accuracy - mean accuracy calculated using the testing label
-            '''
+        '''
             
-            test_loss = 0
-            accuracy = 0
-            with torch.no_grad():
-                self.__model.eval()
-                for inputs, labels in test_loader:
-                    inputs, labels = \
-                            inputs.to(self.__device), \
-                            labels.to(self.__device)
-                    log_prob = self.__model(inputs)
-                    loss = self.loss_crit(log_prob, labels)
-                    test_loss += loss.item()
-                    prob = torch.exp(log_prob)
-                    #top_p, top_class = prob.topk(1, dim=1)
-                    #equals = top_class == labels.view(*top_class.shape)
-                    #accuracy += torch.mean(equals.type(torch.FloatTensor))
-                    is_equal = (labels.data == prob.max(dim=1)[1])
-                    accuracy += torch.mean(is_equal.type(torch.FloatTensor))
+        test_loss = 0
+        accuracy = 0
+        with torch.no_grad():
+            self.__model.eval()
+            for inputs, labels in test_loader:
+                inputs, labels = \
+                        inputs.to(self.__device), \
+                        labels.to(self.__device)
+                log_prob = self.__model(inputs)
+                loss = self.loss_crit(log_prob, labels)
+                test_loss += loss.item()
+                prob = torch.exp(log_prob)
+                #top_p, top_class = prob.topk(1, dim=1)
+                #equals = top_class == labels.view(*top_class.shape)
+                #accuracy += torch.mean(equals.type(torch.FloatTensor))
+                is_equal = (labels.data == prob.max(dim=1)[1])
+                accuracy += torch.mean(is_equal.type(torch.FloatTensor))
                     
 #                print("Test loss = {:.3f}".format(test_loss/len(test_loader)))
 #                print("Test accuracy = {:.3f}".format(accuracy/len(test_loader)))
                 
-                self.__model.train()
+        self.__model.train()
                 
-            return test_loss, accuracy
+        return test_loss, accuracy
 
-
+    def save_model(model, checkpoint_path, data_train):
+    
+        model.class_to_idx = data_train.class_to_idx
+        checkpoint = {\
+                'input_size': n_inputs, \
+                'hidden_size': n_hidden, \
+                'output_size': n_output, \
+                'conv_model': arch, \
+                'class_to_idx': model.class_to_idx, \
+                'state_dict': model.state_dict()}
+    
+    
+        torch.save(checkpoint, \
+                checkpoint_path+'checkpoint_final.pth')
 
 
 class Clf(nn.Module):
@@ -346,5 +362,19 @@ if __name__=='__main__':
     #plotTraining(train_losses, valid_losses, acc)
 
     # test the model
-    test_loss, accuracy = test_model(loader_test)
+    test_loss, accuracy = cnn.test_model(loader_test)
 
+    # write results to file
+    print('Test loss: ', test_loss)
+    print('Accuracy: ', accuracy)
+    fh.write(f'Test loss: {test_loss:.3f}')
+    fh.write(f'Accuracy: {accuracy:.3f}\n\n')
+    fh.write(f'Train losses  Valid_losses  Acc')
+
+    for i in zip(train_losses, valid_losses, acc):
+        fh.write(f'{train_losses:.3f}  {valid_losses:.3f}  {acc:.3f}')
+   
+    fh.close()
+
+    # save the model 
+    save_model(model, checkpoint_path, data_train)
