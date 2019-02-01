@@ -14,45 +14,65 @@ from PIL import Image
 import argparse
 
 '''
-This program trains a convolutional NN for image recognition
+This program trains a convolutional NN for image recognition using
+pretrained model.
 '''
 
+#### Begin Parser configuration ####
 parser = argparse.ArgumentParser(
-description = "This program trains a convolutional NN for image\
- recognition"
+description = "This program trains a convolutional NN for \
+flower image recognition"
 )
 
-# parser options
+# Parser options
+
+# Rubric: The training script allows users to choose from at least two 
+# different architectures available from torchvision.models
+
+# choose pretrained model [resnet50, vgg16]
 parser.add_argument("--arch", action="store", \
 type=str, dest='arch', default='resnet50',\
 choices=['resnet50','vgg16'],\
 help="Choose pretrained model")
 
+# Rubric: The training script allows users to set hyperparameters for 
+# learning rate, number of hidden units, and training epochs
+
+# define number of epochs
 parser.add_argument("--epochs", action="store", \
 type=int, dest='epochs', default='2',\
 help="Define number of training epochs")
 
+# define root path for flowers directory
 parser.add_argument("--data_dir", action="store", \
 type=str, dest='data_dir', default='flowers',\
-help="Choose data files root path")
+help="Choose root path for flowers directory")
 
-parser.add_argument("--hidden", action="append", \
-type=int, dest='n_hidden', default = [],\
-help="Define number of hidden layers. \
-Multiple layers defined by invoking flag multiple times.")
+# define number of nodes for the two hidden layers
+parser.add_argument("--hidden", action="store", \
+type=int, dest='n_hidden', nargs='+',\
+help="Define number of nodes for each of the\
+ two hidden layers (Example: train.py --hidden 10,10)")
 
+# define path to save files
 parser.add_argument("--save_dir", action="store", \
 type=str, dest='save_dir', default='.',\
-help="Choose path to save files")
+help="Define path to save files")
 
+# Rubric: The training script allows users to choose 
+# training the model on a GPU
+
+# choose if GPU is used
 parser.add_argument("--gpu", action="store", \
 type=bool, dest='device', default=False,\
 help="Choose if GPU is used")
 
+# define learn rate
 parser.add_argument("--learn_rate", action="store", \
 type=float, dest='learn_rate', default='0.003',\
 help="Define learn rate for training algorithm")
 
+# Process parser options
 args = parser.parse_args()
 
 arch = args.arch
@@ -63,12 +83,14 @@ if args.n_hidden:
 else:
     hidden_units = [1024,512]
 save_dir = args.save_dir
-if args.device == True:
+
+if args.device:
     device = 'cuda' 
 else:
     device = 'cpu'
 lr = args.learn_rate
 
+# Print parser options
 print('model name: ', arch)
 print('number of epochs: ', epochs)
 print('data path: ', data_dir)
@@ -76,14 +98,21 @@ print('hidden layers: ', hidden_units)
 print('save path: ', save_dir)
 print('gpu: ', device)
 
-# define internal parameters
-batch_size = 64
-n_output = 102 # number of flower categories
+#### End parser configuration ####
 
-# output file
+# Define internal parameters
+batch_size = 64
+n_output = 102 # defined number of flower categories
+# Open output log file
 fh = open("output.dat","w")
 
+
 def plotTraining(train_losses, valid_losses, acc):
+    '''
+    This function plots Epoch and Accuracy as a
+    function of epoch for model training.
+    '''
+    
     fig, axes = plt.subplots(figsize=(12,4), ncols=2)
     axes[0].plot(train_losses, label='train')
     axes[0].plot(valid_losses, label='valid')
@@ -98,14 +127,25 @@ def plotTraining(train_losses, valid_losses, acc):
 
 class convNeuralNet(object):
 
+    '''
+    This class generates, trains, and tests
+    a convolutional neural network. The model
+    is used for flower image recognition.
+    '''
+    
     def __init__(self, device):
+        # define private variables
         self.__device = device 
         self.__optimizer = None
         self.__loss_crit = None
         self.__model = None
+       
 
-    def prepare_data(self,datadir, batch_size):
-
+    def prepare_data(self, datadir, batch_size):
+        '''
+        This function reads the dataset (train, validation, test)
+        and transforms it for processing by the model.
+        '''
         print('prepare_data')
         # define transforms
         transf_train = transforms.Compose(\
@@ -136,7 +176,10 @@ class convNeuralNet(object):
 
     def prepare_loader(self, data_train, data_valid, data_test, \
     batch_size):
-
+        '''
+        This function reads the processed dataset and
+        returns loaders (iterators) for the model.
+        '''
         print('prepare_loader')
         # define dataloaders
         loader_train = torch.utils.data.DataLoader(data_train,\
@@ -149,6 +192,12 @@ class convNeuralNet(object):
         return loader_train, loader_valid, loader_test
 
     def load_model(self, arch):
+        '''
+        This function loads the chosen pretrained model.
+        Default model is resnet50. It returns
+        the number of inputs for the classifier
+        according to the model.
+        '''
         if arch == 'vgg16':
             print('vgg16 loaded')
             self.__model = models.vgg16(pretrained=True)
@@ -164,7 +213,31 @@ class convNeuralNet(object):
 
         return n_inputs
 
-    def update_clf(self, clf):
+    def classifier(self, n_inputs, n_hidden, n_output):
+        '''
+        This function builds the classifier that is coupled
+        to the last layer of the pretained model.
+        '''
+        # define classifier operations
+        clf = nn.Sequential(OrderedDict([\
+                ('fc1', nn.Linear(n_inputs, n_hidden[0])),\
+                ('relu1', nn.ReLU()),\
+                ('dropout1', nn.Dropout(p=0.2)),\
+                ('fc2', nn.Linear(n_hidden[0], n_hidden[1])),\
+                ('relu2', nn.ReLU()),\
+                ('dropout2', nn.Dropout(p=0.2)),\
+                ('fc3', nn.Linear(n_hidden[1], n_output)),\
+                ('log_softmax', nn.LogSoftmax(dim=1))]))
+        
+        # initialize weights using He initialization
+        torch.nn.init.kaiming_normal_(clf.fc1.weight, \
+                mode='fan_in')
+        torch.nn.init.kaiming_normal_(clf.fc2.weight, \
+                mode='fan_in')
+        torch.nn.init.kaiming_normal_(clf.fc3.weight, \
+                mode='fan_in')
+        
+        # attach classifier to last layer of pretrained model
         if arch == 'vgg16':
             self.__model.classifier = clf
         else: # defaults to resnet50
@@ -172,97 +245,132 @@ class convNeuralNet(object):
 
         return self.__model
 
-    def setup_training(self, lr=0.003):
-#        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    def valid_model(self, validloader):
+        '''
+        This function validates a training step
+        using the validation set. It returns
+        the validation loss and accuracy.
+        '''
+        # enter eval mode - turn off dropout
+        self.__model.eval()
+        # set return variables to zero
+        valid_loss = 0
+        accuracy = 0
+        # iterate through validation set
+        for inputs, labels in validloader:
+            inputs, labels = inputs.to(self.__device), \
+            labels.to(self.__device)
+            # get logits from forward pass
+            logit_v = self.__model.forward(inputs)
+            # calculate loss from logits
+            loss_v = self.__loss_crit(logit_v, labels)
+            # accumulate losses for each batch to get total loss
+            valid_loss += loss_v.item()
+            # calculate probability using exp
+            # to extract values from log-softmax
+            prob = torch.exp(logit_v)
+            # count how many predictions were right
+            is_equal = (labels.data == prob.max(dim=1)[1])
+            # get mean count for the batch step
+            # accumulate counts for each batch to get total count
+            accuracy += torch.mean(is_equal.type(torch.FloatTensor))
+            # return model to train mode
+            model.train()
+        
+        return valid_loss/len(validloader), accuracy/len(validloader)
+    
+    def train_model(self, epochs, \
+            trainloader, validloader, lr=0.003):
+        '''
+        This function trains the model and returns
+        training and validation losses and accuracy for each
+        step.
+        '''
+        
         # using negative Log-Likelihood as loss function
         self.__loss_crit = nn.NLLLoss()
 
         # using Adam optimizer
         if arch == 'resnet50':
             self.__optimizer = \
-                    optim.Adam(self.__model.fc.parameters(), lr)
+                    optim.Adam(self.__model.\
+                    fc.parameters(), lr)
         else:
             self.__optimizer = \
-                    optim.Adam(self.__model.classifier.parameters(), lr)
+                    optim.Adam(self.__model.\
+                    classifier.parameters(), lr)
 
-        return self.__device
-
-    def train_model(self, epochs, trainloader, validloader):
+        # define accumulation lists for plot
         train_losses = []
         valid_losses = []
         acc = []
+        # define one validation step per batch
         valid_step = batch_size
         step_valid = 0
  
+        # move model to device
         self.__model.to(self.__device)
+        # start training mode - dropout activated
         self.__model.train()
-
 
         print(self.__model)
 
         for e in range(epochs):
-            print('epoch: ',e)
+            
             start = time.time()
             train_loss = 0
             steps = 0
             for inputs, labels in trainloader:
                 inputs, labels = \
                             inputs.to(self.__device), \
-                            labels.to(self.__device)        
+                            labels.to(self.__device)     
+                # set gradient to zero for each batch
                 self.__optimizer.zero_grad()
+                # get logits from forward pass
                 logit = self.__model.forward(inputs)
+                # calculate loss function with logits
                 loss = self.__loss_crit(logit, labels)
+                # perform backpropagation
                 loss.backward()
                 self.__optimizer.step()
+                # accumulate train_loss
                 train_loss += loss.item()
                 steps += 1
-            
+                
+                # enter validation part
                 if steps % valid_step == 0:
-        
-                    valid_loss = 0
-                    accuracy = 0
-                    with torch.no_grad():
-                        self.__model.eval()
-                        for inputs, labels in validloader:
-                            inputs, labels = \
-                                        inputs.to(self.__device), \
-                                        labels.to(self.__device)
-                            logit_v = self.__model.forward(inputs)
-                            loss_v = self.__loss_crit(logit_v, labels)
-                            valid_loss += loss_v.item()
-                            prob = torch.exp(logit_v)
-                            is_equal = (labels.data == prob.max(dim=1)[1])
-                            accuracy += torch.mean(is_equal.type(torch.FloatTensor))
-            
-                    step_valid += 1    
+                    valid_loss, accuracy = self.valid_model(validloader) 
                     model.train()
 
+                # Rubric: The training loss, validation loss, and validation accuracy are 
+                # printed out as a network trains
                     print("Epoch: {} of {}".format(e+1, epochs))
                     print("Training loss = {:.3f}".format(train_loss/len(trainloader)))
-                    print("Validation loss = {:.3f}".format(valid_loss/len(validloader)))
-                    print("Validation Accuracy = {:.3f}".format(accuracy/len(validloader)))
+                    print("Validation loss = {:.3f}".format(valid_loss))
+                    print("Validation Accuracy = {:.3f}".format(accuracy))
                     print(f"Time = {time.time()/60.:.3f}")
+                    
+                    fh.write("Epoch: {} of {}\n".format(e+1, epochs))
+                    fh.write("Training loss = {:.3f}\n".format(train_loss/len(trainloader)))
+                    fh.write("Validation loss = {:.3f}\n".format(valid_loss))
+                    fh.write("Validation Accuracy = {:.3f}\n".format(accuracy))
+                    step_valid += 1    
                     acc.append(accuracy / len(validloader))
-                    valid_losses.append(valid_loss / len(validloader))
-                    train_losses.append(train_loss / len(trainloader))
+                    valid_losses.append(valid_loss)
+                    train_losses.append(train_loss)
         
         return [train_losses, valid_losses, acc]
 
+                    
+    
     def test_model(self, test_loader):
 
-        ''''
-            This function loads the trained model and evaluates its accuracy
-            using the test set
-            
-            INPUTS:
-            test_loader - Data loader containing test data
-            
-            OUTPUTS:
-            test loss - mean loss calculated for testing set
-            accuracy - mean accuracy calculated using the testing label
         '''
-            
+            This function loads the trained model and evaluates loss and 
+            accuracy using the test set
+        '''
+
+        self.__model.to(device)
         test_loss = 0
         accuracy = 0
         with torch.no_grad():
@@ -272,7 +380,7 @@ class convNeuralNet(object):
                         inputs.to(self.__device), \
                         labels.to(self.__device)
                 log_prob = self.__model(inputs)
-                loss = self.loss_crit(log_prob, labels)
+                loss = self.__loss_crit(log_prob, labels)
                 test_loss += loss.item()
                 prob = torch.exp(log_prob)
                 #top_p, top_class = prob.topk(1, dim=1)
@@ -281,54 +389,34 @@ class convNeuralNet(object):
                 is_equal = (labels.data == prob.max(dim=1)[1])
                 accuracy += torch.mean(is_equal.type(torch.FloatTensor))
                     
-#                print("Test loss = {:.3f}".format(test_loss/len(test_loader)))
-#                print("Test accuracy = {:.3f}".format(accuracy/len(test_loader)))
-                
+        print("Test loss = {:.3f}".format(test_loss/len(test_loader)))
+        print("Test accuracy = {:.3f}".format(accuracy/len(test_loader)))
+        fh.write("Test loss = {:.3f}\n".format(test_loss/len(test_loader)))
+        fh.write("Test accuracy = {:.3f}\n".format(accuracy/len(test_loader)))
+         
         self.__model.train()
                 
-        return test_loss, accuracy
+        return test_loss/len(test_loader), accuracy/len(test_loader)
 
-    def save_model(model, checkpoint_path, data_train):
+    def save_model(self, n_inputs, n_hidden, n_output, checkpoint_path, data_train):
     
-        model.class_to_idx = data_train.class_to_idx
+        '''
+            This function saves the trained model
+        '''
+        
+        self.__model.class_to_idx = data_train.class_to_idx
         checkpoint = {\
                 'input_size': n_inputs, \
                 'hidden_size': n_hidden, \
                 'output_size': n_output, \
                 'conv_model': arch, \
-                'class_to_idx': model.class_to_idx, \
-                'state_dict': model.state_dict()}
+                'class_to_idx': self.__model.class_to_idx, \
+                'state_dict': self.__model.state_dict()}
     
-    
-        torch.save(checkpoint, \
-                checkpoint_path+'checkpoint_final.pth')
+        torch.save(checkpoint, checkpoint_path+'checkpoint_final.pth')
+            
 
-
-class Clf(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
-        super().__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size[0])
-        self.fc2 = nn.Linear(hidden_size[0], hidden_size[1])
-        self.fc3 = nn.Linear(hidden_size[1], output_size)
-        
-        self.dropout = nn.Dropout(p=0.2)
-        # initialize weights using He initialization
-        torch.nn.init.kaiming_normal_(self.fc1.weight, \
-                mode='fan_in')
-        torch.nn.init.kaiming_normal_(self.fc2.weight, \
-                mode='fan_in')
-        torch.nn.init.kaiming_normal_(self.fc3.weight, \
-                mode='fan_in')
-
- 
-    def forward(self, x):
-
-        x = x.view(x.shape[0], -1)
-        x = self.dropout(F.relu(self.fc1(x)))
-        x = self.dropout(F.relu(self.fc2(x)))
-        x = F.log_softmax(self.fc3(x), dim=1)
-
-        return x
+  
 
 if __name__=='__main__':
     
@@ -346,35 +434,23 @@ if __name__=='__main__':
     n_inputs = cnn.load_model(arch)
 
     # instantiate classifier
-    clf = Clf(n_inputs, hidden_units, n_output)
+    #clf = Clf(n_inputs, hidden_units, n_output)
 
     # replace classifier of pretrained network
-    model = cnn.update_clf(clf)
-#    print(model)
+    model = cnn.classifier(n_inputs, hidden_units, n_output)
 
-    # setup training functions - device, loss and optimizer
-    device = cnn.setup_training(lr)
-    print('device: ',device)
-
+    # Rubric: train.py successfully trains a new network on a dataset of images and 
+    # saves the model to a checkpoint
     # train the network
-    train_losses, valid_losses, acc = cnn.train_model(epochs, loader_train, loader_valid)
+    train_losses, valid_losses, acc = cnn.train_model(epochs, \
+            loader_train, loader_valid, lr)
 
     #plotTraining(train_losses, valid_losses, acc)
 
     # test the model
     test_loss, accuracy = cnn.test_model(loader_test)
 
-    # write results to file
-    print('Test loss: ', test_loss)
-    print('Accuracy: ', accuracy)
-    fh.write(f'Test loss: {test_loss:.3f}')
-    fh.write(f'Accuracy: {accuracy:.3f}\n\n')
-    fh.write(f'Train losses  Valid_losses  Acc')
-
-    for i in zip(train_losses, valid_losses, acc):
-        fh.write(f'{train_losses:.3f}  {valid_losses:.3f}  {acc:.3f}')
-   
-    fh.close()
-
     # save the model 
-    save_model(model, checkpoint_path, data_train)
+    cnn.save_model(n_inputs, hidden_units, n_output, save_dir, data_train)
+    
+    fh.close()
