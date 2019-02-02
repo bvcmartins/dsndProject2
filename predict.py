@@ -31,6 +31,7 @@ NN trained with the 102 Category Flower dataset
 
 '''
 
+#### Begin Parser configuration ####
 parser = argparse.ArgumentParser(
     description = "This program processes a flower picture and \
             predicts the species of this flower. \
@@ -78,15 +79,27 @@ else:
 
 image = args.positional
 
+#### End parser configuration ####
+
 class prediction(object):
 
+    '''
+        This class analyzes the image of a flower
+        and predicts its species. The classifier
+        is a neural network attached to a pretrained
+        convolutional model.
+    '''
+    
     def __init__(self):
-
+    # define private variables
         with open(category_names) as json_file:
             self.cat_to_name = json.load(json_file)
  
     def loadModel(self, checkpoint_file, device):
-   
+    '''
+        This function loads a trained stored model.
+    '''   
+
         checkpoint_path = checkpoint_root + checkpoint_file
 
         checkpoint = torch.load(checkpoint_path, \
@@ -126,7 +139,8 @@ class prediction(object):
     def process_image(self, image):
 
         ''' 
-            Scales, crops, and normalizes a PIL image 
+            This function scales, crops, 
+            and normalizes a PIL image 
             for use with a PyTorch model, 
             returns an Numpy array
         '''
@@ -140,7 +154,8 @@ class prediction(object):
     def predict(self, image, model, top_k=5):
 
         ''' 
-            Predict the class (or classes) of an image using a 
+            This function predicts the class 
+            (or classes) of an image using a 
             trained deep convolutional model.
     
         '''
@@ -166,6 +181,13 @@ class prediction(object):
         return top_prob, top_class
 
     def plot_prediction(self, image, model, top_k = 5):
+        ''' 
+            This function plots the image
+            with a histogram of the probabbilities
+            for the top_k classes.
+    
+        '''
+        
         top_prob, top_class = self.predict(image, model, top_k)
         img = self.process_image(image)
         # convert index to classes

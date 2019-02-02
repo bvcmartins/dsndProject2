@@ -56,7 +56,7 @@ help="Define number of nodes for each of the\
 
 # define path to save files
 parser.add_argument("--save_dir", action="store", \
-type=str, dest='save_dir', default='.',\
+type=str, dest='save_dir', default='./',\
 help="Define path to save files")
 
 # Rubric: The training script allows users to choose 
@@ -414,9 +414,6 @@ class convNeuralNet(object):
                 'state_dict': self.__model.state_dict()}
     
         torch.save(checkpoint, checkpoint_path+'checkpoint_final.pth')
-            
-
-  
 
 if __name__=='__main__':
     
@@ -432,9 +429,6 @@ if __name__=='__main__':
     cnn.prepare_loader(data_train, data_test, \
     data_valid, batch_size)
     n_inputs = cnn.load_model(arch)
-
-    # instantiate classifier
-    #clf = Clf(n_inputs, hidden_units, n_output)
 
     # replace classifier of pretrained network
     model = cnn.classifier(n_inputs, hidden_units, n_output)
