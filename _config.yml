@@ -1,5 +1,5 @@
 name: imgClf_aipnd 
-theme: jekyll-theme-minimal
+theme: jekyll-theme-slate
 plugins:
  - jekyll-relative-links
 relative_links:
