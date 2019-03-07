@@ -1,8 +1,2 @@
-theme: jekyll-theme-modernist
-plugins: jekyll-relative-links
-relative_links:
-    enable: true
-    collections: true
-
-include:
-    README.md
+theme: jekyll-theme-slate
+include: README.md
