@@ -32,8 +32,8 @@ fully-connected network for classification.
 
 Parameters for the classification network:
 - He initialization
-- Adam optimizer with learn rate 0.003
-- Dropout with probability 0.2
+- Adam optimizer (learn rate 0.003)
+- Dropout regularization (probability 0.2)
 - ReLU activation
 - Negative Log-Likelihood loss
 
@@ -45,5 +45,5 @@ a simpler model
 for the accuracy 
 - The choice of pre-trained model CNN was the most important
 factor for prediction accuracy
-- Images that were not correctly predicted, had the
-correct species in the top 5 90% of the time
+- The test images that had not been correctly predicted 
+still had the correct species in the top 5 list 
