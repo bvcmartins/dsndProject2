@@ -1,6 +1,6 @@
 # Developing an AI application - Image Classifier
 
-Project 2 for Udacity's Data Scientist Nanodegree
+Project 2 of Udacity Data Scientist Nanodegree
 
 ## Overview
 
